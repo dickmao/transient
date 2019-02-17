@@ -1419,9 +1419,12 @@ EDIT may be non-nil."
 
 (defun transient--pre-exit ()
   (transient--debug 'pre-exit)
-  (let ((window (selected-window)))
-    (lv-delete-window)
-    (select-window window))
+  (unless (and (eq this-command 'transient-suspend)
+               (not (eq this-original-command 'transient-suspend)))
+    ;; ^ Hopefully this is only true when entering help.
+    (set-window-configuration transient--popup-previous-winconf)
+    (setq transient--popup-previous-winconf nil)
+    (kill-buffer transient--popup-buffer))
   (transient--timer-cancel)
   (transient--pop-keymap 'transient--transient-map)
   (transient--pop-keymap 'transient--redisplay-map)
@@ -2179,8 +2182,23 @@ have a history of their own.")
             (insert ?\n))))
       (when (or transient--helpp transient--editp)
         (transient--insert-help))
-      (let ((lv-force-update t))
-        (lv-message "%s" (buffer-string))))))
+      (setq transient--popup-buffer (get-buffer-create "*Transient*"))
+      (let ((str (buffer-string)))
+        (with-current-buffer transient--popup-buffer
+          (erase-buffer)
+          (save-excursion
+            (insert (concat str "\n")))))
+      (let ((winconf (current-window-configuration))
+            (win (display-buffer transient--popup-buffer
+                                 '((display-buffer-below-selected)))))
+        (with-selected-window win
+          (fit-window-to-buffer nil nil (line-number-at-pos (point-max))))
+        (unless transient--popup-previous-winconf
+          (setq transient--popup-previous-winconf winconf)))
+      )))
+
+(defvar transient--popup-buffer nil)
+(defvar transient--popup-previous-winconf nil)
 
 (cl-defgeneric transient--insert-group (group)
   "Format GROUP and its elements and insert the result.")
